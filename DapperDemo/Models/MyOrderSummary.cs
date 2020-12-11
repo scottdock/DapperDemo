@@ -6,9 +6,11 @@ using System.Threading.Tasks;
 
 namespace DapperDemo.Models
 {
-    public class Brand
+    public class MyOrderSummary
     {
-        public int BrandID { get; set; }
-        public string BrandName  { get; set; }
+        public int OrderID { get; set; }
+        public DateTime OrderDate { get; set; }
+        public int StaffID { get; set; }
+
     }
 }

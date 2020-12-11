@@ -1,0 +1,381 @@
+# These are the snippets for Scott Dockendorf's DapperDemo 
+
+- 0: Logits
+
+        #region supporting methods 
+        private static void LogitWithPause(string msg)
+        {
+            Console.WriteLine(msg);
+            Console.WriteLine("Press ENTER to continue...");
+            Console.ReadLine();
+        }
+
+        private static void Logit(string msg)
+        {
+            Console.WriteLine(msg);
+        }
+        #endregion
+
+- 0: ConnString
+
+        private static string _connStr = "Server=.;Database=BikeStores;Trusted_Connection=True;";
+		
+- 0: Checklist 
+
+            // ===> Queries 
+            // Get multiple records via ADO.NET
+            // Get multiple via Dapper - text 
+            // Get multiple via Dapper - stored procedure
+            // Get Single via sproc 
+            // Get Single - summary 
+            // Get single Parent & Child object collection  
+
+            // ===> Commands, Transactions, Return Values 
+            // Update with Text 
+            // update with text & transaction 
+            // Update with sproc & return values 
+            // insert with sproc 
+            // INsert multiple values with single command 
+
+            // ===> Exception Handling 
+            // Simulate Error from sproc 
+
+            // ===> Approach 
+            // Nice concise query approach 
+
+-0: Models-Order.cs
+
+    public class Order
+    {
+        public int OrderID { get; set; }
+        public int CustomerID { get; set; }
+        public int OrderStatus { get; set; }
+        public DateTime OrderDate { get; set; }
+        public DateTime RequiredDate { get; set; }
+        public DateTime ShippedDate { get; set; }
+        public int StoreID { get; set; }
+        public int StaffID { get; set; }
+        //public List<OrderItem> OrderItems { get; set; }
+    }
+
+
+-0: Models-OrderItem.cs
+
+    public class OrderItem
+    {
+        public int OrderID { get; set; }
+        public int ItemID { get; set; }
+        public int ProductID { get; set; }
+        public int Quantity { get; set; }
+        public decimal ListPrice { get; set; }
+        public decimal Discount { get; set; }
+
+        public decimal LineItemPrice
+        {
+            get
+            {
+                return (this.ListPrice * this.Quantity) * (1 - this.Discount);
+            }
+        }
+    }
+
+
+-1: LoadOrdersRaw()
+
+        private static void LoadOrdersRaw()
+        {
+            var myResult = new List<Models.Order>();
+
+            var query = "SELECT top 10 * FROM sales.orders";
+
+            using (var conn = new SqlConnection(_connStr))
+            {
+                conn.Open();
+
+                var cmd = new SqlCommand(query, conn);
+                cmd.CommandType = System.Data.CommandType.Text;
+                cmd.CommandTimeout = 90;
+
+                var reader = cmd.ExecuteReader();
+
+                while (reader.Read())
+                {
+                    var obj = new Models.Order()
+                    {
+                        OrderID = (int)reader["orderid"],
+                        CustomerID = (int)reader["customerid"],
+                        OrderStatus = (byte)reader["orderstatus"],
+                        OrderDate = (DateTime)reader["orderdate"],
+                        RequiredDate = (DateTime)reader["RequiredDate"],
+                        ShippedDate = (DateTime)reader["ShippedDate"],
+                        StoreID = (int)reader["StoreID"],
+                        StaffID = (int)reader["StaffID"]
+                    };
+
+                    myResult.Add(obj);
+                }
+
+                conn.Close();
+            }
+
+            Logit("Records from Raw query:");
+
+            foreach (var item in myResult)
+            {
+                Logit($"Order {item.OrderID} was placed at {item.OrderDate} and shipped on {item.ShippedDate}");
+            }
+
+            LogitWithPause("Complete");
+
+        }
+
+-2: GetOrderAndLineItems()
+
+        private static void GetOrderAndLineItems(int orderID)
+        {
+            Models.Order order = null;
+
+            var query = @"SELECT * FROM sales.orders where orderid = @OrderID; 
+                        SELECT * from sales.orderitems where orderID = @OrderID";
+
+            var qp = new DynamicParameters();
+            qp.Add("@OrderID", orderID, DbType.Int32, ParameterDirection.Input);
+
+            using (System.Data.IDbConnection db = new SqlConnection(_connStr))
+            {
+                var multi = db.QueryMultiple(
+                        sql: query,
+                        param: qp,
+                        commandTimeout: 90,
+                        commandType: System.Data.CommandType.Text);
+
+                order = multi.Read<Models.Order>().Single();
+                order.OrderItems = multi.Read<Models.OrderItem>().ToList();
+            }
+
+            var totalOrderAmount = order.OrderItems.Sum(x => x.LineItemPrice);
+            Logit($"Order {order.OrderID} has {order.OrderItems.Count} line items at a total cost of {totalOrderAmount}");
+
+        }
+
+
+-2: OrderItem Class
+
+    public class OrderItem
+    {
+        public int OrderID { get; set; }
+        public int ItemID { get; set; }
+        public int ProductID { get; set; }
+        public int Quantity { get; set; }
+        public decimal ListPrice { get; set; }
+        public decimal Discount { get; set; }
+
+        public decimal LineItemPrice
+        {
+            get
+            {
+                return (this.ListPrice * this.Quantity) * (1 - this.Discount);
+            }
+        }
+    }
+	
+-U 1 Brands Class
+
+    public class Brand
+    {
+        public int BrandID { get; set; }
+        public string BrandName { get; set; }
+    }
+	
+-U 2 UpdateBrandNameWithText
+
+        private static void UpdateBrandNameWithText(Brand brand)
+        {
+            var result = -1;
+
+            var query = "update production.brands set brandname = @BrandName where brandid = @BrandID";
+
+            var qp = new DynamicParameters();
+            qp.Add(name: "@BrandName", dbType: DbType.String, direction: ParameterDirection.Input, value: brand.BrandName);
+            qp.Add(name: "@BrandID", dbType: DbType.Int32, direction: ParameterDirection.Input, value: brand.BrandID);
+
+            using (System.Data.IDbConnection db = new SqlConnection(_connStr))
+            {
+                result = db.Execute(query, qp, null, null, CommandType.Text);
+            }
+
+            Logit($"Brand updated with result: {result}");
+            LogitWithPause("Complete");
+        }
+
+-U 3 UpdateBrandWithSprocReturnValTransaction
+
+        private static void UpdateBrandWithSprocReturnValTransaction(Models.Brand brand)
+        {
+            var myRetVal = -1;
+
+            var query = "production.Update_Brands";
+
+            var qp = new DynamicParameters();
+            qp.Add(name: "@BrandID", dbType: DbType.Int32, direction: ParameterDirection.Input, value: brand.BrandID);
+            qp.Add(name: "@BrandName", dbType: DbType.String, direction: ParameterDirection.Input, value: brand.BrandName);
+            qp.Add(name: "@RetVal", dbType: DbType.Int32, direction: ParameterDirection.ReturnValue);
+
+            using (System.Data.IDbConnection db = new SqlConnection(_connStr))
+            {
+                db.Open();
+                var trx = db.BeginTransaction();
+                var result = db.Execute(query, qp, trx, 90, CommandType.StoredProcedure);
+
+                myRetVal = qp.Get<int>("@RetVal");
+
+                Logit($"Result (num records): {result} myRetVal: {myRetVal}");
+
+                if (myRetVal == 0)
+                {
+                    trx.Commit();
+                }
+                else
+                {
+                    trx.Rollback();
+                }
+                db.Close();
+            }
+
+            Logit($"Brand updated with result: {myRetVal}");
+            LogitWithPause("Complete");
+
+        }
+		
+		
+-U 4 InsertBrandSproc()
+
+        private static void InsertBrandSproc()
+        {
+            var count = -1;
+
+            using (System.Data.IDbConnection db = new SqlConnection(_connStr))
+            {
+                count = db.Execute(@"insert Production.Brands (brandname) values (@a)",
+                    new[] { new { a = "Iron Maiden" } }
+                );
+            }
+
+        }
+
+-U 5 ListDataButError 
+
+        private static void ListDataButError()
+        {
+            var results = new List<Models.Order>();
+
+            try
+            {
+                using (System.Data.IDbConnection db = new SqlConnection(_connStr))
+                {
+                    results = db.Query<Models.Order>(
+                            sql: "select 1/0, * from sales.Orders",
+                            commandTimeout: 90,
+                            commandType: System.Data.CommandType.Text).ToList();
+                }
+
+                Logit("Records from Raw query:");
+
+                foreach (var item in results)
+                {
+                    Logit($"Order {item.OrderID} was placed at {item.OrderDate} and shipped on {item.ShippedDate}");
+                }
+
+                LogitWithPause("Complete");
+            }
+            catch (SqlException sqlex)
+            {
+                Logit(sqlex.GetFullMessage());
+            }
+            catch (Exception ex)
+            {
+                Logit(ex.GetFullMessage());
+            }
+
+        }
+
+-U 6 ExceptionExtensions.cs
+
+        public static string GetFullMessage(this Exception ex)
+        {
+            var msg = (ex.InnerException != null)
+                ? $"{ex.InnerException.Message} {ex.Message} {ex.StackTrace}"
+                : $"{ex.Message} {ex.StackTrace}";
+
+            return msg;
+        }
+
+-U 7 GetOrder.cs
+
+    //using Dapper;
+    //using Microsoft.Data.SqlClient;
+    //using System.Data;
+    //using DapperDemoConsole.Extensions;
+    public class GetOrder
+    {
+        public static string _connStr = string.Empty;
+
+        public GetOrder(string connStr)
+        {
+            _connStr = connStr;
+        }
+
+        public class Request
+        {
+            public int OrderID { get; set; }
+        }
+
+        public class Response
+        {
+            public bool Success { get; set; }
+            public bool HasValue { get; set; }
+            public string ErrorMessage { get; set; }
+            public Models.Order Order { get; set; }
+        }
+
+        public Response Execute(Request request)
+        {
+            var response = new Response()
+            {
+                ErrorMessage = string.Empty,
+                HasValue = false,
+                Order = null,
+                Success = false
+            };
+
+            var query = "sales.Get_Order";
+
+            var qp = new DynamicParameters();
+            qp.Add(name: "@OrderID", dbType: DbType.Int32, direction: ParameterDirection.Input, value: request.OrderID);
+
+            try
+            {
+                using (System.Data.IDbConnection db = new SqlConnection(_connStr))
+                {
+                    var result = db.QueryFirstOrDefault<Models.Order>(
+                            sql: query,
+                            commandTimeout: 90,
+                            commandType: System.Data.CommandType.StoredProcedure,
+                            param: qp
+                            );
+
+                    response.Success = true;
+                    response.HasValue = (result != null && result.OrderID > 0) ? true : false;
+                    response.Order = result;
+                }
+            }
+            catch (Exception ex)
+            {
+                response.ErrorMessage = ex.GetFullMessage();
+            }
+
+            return response;
+        }
+
+    }
+	

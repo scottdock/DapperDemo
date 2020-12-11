@@ -1,4 +1,4 @@
-USE [BikeStores2]
+USE [BikeStores]
 GO
 
 /****** Object:  StoredProcedure [sales].[Get_MostRecent_Orders]    Script Date: 9/15/2020 5:57:26 AM ******/

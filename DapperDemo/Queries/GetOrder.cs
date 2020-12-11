@@ -1,12 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
-using Dapper;
 using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using Dapper;
 using Microsoft.Data.SqlClient;
 using System.Data;
 using DapperDemo.Extensions;
-using DapperDemo.Models;
 
 namespace DapperDemo.Queries
 {
@@ -59,18 +59,18 @@ namespace DapperDemo.Queries
                             );
 
                     response.Success = true;
-                    response.HasValue = (result != null && result.OrderID > 0) ? true : false;
+                    response.HasValue = (result != null && result.OrderID > 0);
                     response.Order = result;
                 }
             }
             catch (Exception ex)
             {
-                response.ErrorMessage = ex.GetFullMessage();
+                response.ErrorMessage = ex.Message;
             }
 
             return response;
         }
 
     }
-
+	
 }
